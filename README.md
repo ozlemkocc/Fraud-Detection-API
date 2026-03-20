@@ -20,6 +20,11 @@ Bu projeyi bilgisayarınızda çalıştırmak için Docker yüklü olması yeter
    docker run -p 8000:8000 fraud-api
 3. **Test:**
 Tarayıcıdan http://localhost:8000/docs adresine giderek Swagger UI üzerinden tahmin isteği gönderebilirsiniz
+## Model Performansı (Confusion Matrix)
+
+Modelin test verileri üzerindeki başarı tablosu aşağıdadır:
+
+![Confusion Matrix](./confusion_matrix.png)
 
 **Notlar**
 Bu benim ilk MLOps denememdir. Modelin sadece bir notebook üzerinde kalmaması, gerçek bir yazılım ürünü gibi servis edilebilmesi için Docker mimarisini tercih ettim.
