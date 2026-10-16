@@ -1,28 +1,48 @@
-from fastapi import FastAPI
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+
 import joblib
 import pandas as pd
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
-app = FastAPI()
+ARTIFACT_PATH = Path(os.getenv("ARTIFACT_PATH", "fraud_pipeline.joblib"))
+artifacts: dict = {}
 
-# Senin dosyalarının tam isimleri
-model = joblib.load('fraud_model.joblib')
-scaler = joblib.load('scaler.joblib')
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    artifacts.update(joblib.load(ARTIFACT_PATH))
+    yield
+    artifacts.clear()
+
+
+app = FastAPI(title="Credit Card Fraud Detection API", version="1.1.0", lifespan=lifespan)
+
 
 class Transaction(BaseModel):
-    features: list
+    features: list[float] = Field(..., description="V1..V28, Amount sırasıyla (29 değer)")
 
-@app.post("/predict")
-def predict(transaction: Transaction):
-    df = pd.DataFrame([transaction.features], columns=model.feature_names_in_)
-    # Amount sütununu ölçeklendir
-    df.iloc[:, -1] = scaler.transform(df.iloc[:, [-1]])
-    
-    prob = model.predict_proba(df)[0][1]
-    prediction = int(model.predict(df)[0])
-    
-    return {
-        "is_fraud": prediction, 
-        "probability": f"%{prob*100:.2f}",
-        "action": "BLOKE ET" if prediction == 1 else "ONAYLA"
-    }
+
+class Prediction(BaseModel):
+    is_fraud: bool
+    fraud_probability: float
+    threshold: float
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/predict", response_model=Prediction)
+def predict(tx: Transaction) -> Prediction:
+    columns: list[str] = artifacts["features"]
+    if len(tx.features) != len(columns):
+        raise HTTPException(422, f"{len(columns)} feature bekleniyor, {len(tx.features)} geldi")
+
+    threshold = float(os.getenv("FRAUD_THRESHOLD", artifacts["threshold"]))
+    df = pd.DataFrame([tx.features], columns=columns)
+    prob = float(artifacts["pipeline"].predict_proba(df)[0, 1])
+    return Prediction(is_fraud=prob >= threshold, fraud_probability=round(prob, 4), threshold=threshold)
